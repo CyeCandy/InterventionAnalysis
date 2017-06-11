@@ -1,0 +1,161 @@
+---
+title: "Intervention analyses workflow"
+output: html_notebook
+---
+
+Intervention analyses workflow optimised using dynamic time warping and Bayesian structural time series models. Combines CausalImpact package written by Kay Brodersen at Google and the dtw package available in CRAN. In addition, we will introduce an R package called MarketMatching. Inspired by http://multithreaded.stitchfix.com/blog/2016/01/13/market-watch/ 
+
+```{r}
+library(devtools)
+install.packages("dtw")
+install_github("google/CausalImpact")
+install_github("klarsen1/MarketMatching", build_vignettes=TRUE)
+```
+```{r}
+##-----------------------------------------------------------------------
+## Find the best 5 matches for each airport time series. Matching will
+## rely entirely on dynamic time warping (dtw) with a limit of 1
+##-----------------------------------------------------------------------
+library(MarketMatching)
+```
+```{r}
+## 'MarketMatching'
+```
+```{r}
+data(weather, package="MarketMatching")
+mm <- best_matches(data=weather,
+                   id_variable="Area",
+                   date_variable="Date",
+                   matching_variable="Mean_TemperatureF",
+                   parallel=TRUE,
+                   warping_limit=1, # warping limit=1
+                   dtw_emphasis=1, # rely only on dtw for pre-screening
+                   matches=5, # request 5 matches
+                   start_match_period="2014-01-01",
+                   end_match_period="2014-10-01")
+##-----------------------------------------------------------------------
+## Analyze causal impact of a made-up weather intervention in Copenhagen
+## Since this is weather data it is a not a very meaningful example.
+## This is merely to demonstrate the function.
+##-----------------------------------------------------------------------
+library(CausalImpact)
+results <- MarketMatching::inference(matched_markets = mm,
+                                    test_market = "CPH",
+                                    end_post_period = "2015-10-01")
+## 	------------- Inputs -------------
+## 	Test Market: CPH
+## 	Control Market 1: BOS
+## 	Control Market 2: JFK
+## 	Control Market 3: LHR
+## 	Control Market 4: STR
+## 	Control Market 5: ZRH
+## 	Market ID: Area
+## 	Date Variable: Date
+## 	Matching (pre) Period Start Date: 2014-01-01
+## 	Matching (pre) Period End Date: 2014-10-01
+## 	Post Period Start Date: 2014-10-02
+## 	Post Period End Date: 2014-12-31
+## 	Matching Metric: Mean_TemperatureF
+## 	Local Level Prior SD: 0.01
+## 	Posterior Intervals Tail Area: 95%
+##
+##
+## 	------------- Model Stats -------------
+## 	Matching (pre) Period MAPE: 4.07%
+## 	Beta 1 [BOS]: 0.0071
+## 	Beta 2 [JFK]: 0.0247
+## 	Beta 3 [LHR]: 0.004
+## 	Beta 4 [STR]: 0.3249
+## 	Beta 5 [ZRH]: 0.0049
+## 	DW: 1.16
+##
+##
+## 	------------- Effect Analysis -------------
+## 	Absolute Effect: -504.81 [-1230.41, 208.59]
+## 	Relative Effect: -10.75% [-26.21%, 4.44%]
+## 	Probability of a causal impact: 91.8979%
+```
+```{r}
+knitr::kable(head(mm$BestMatches))
+```
+```{r}
+results$PlotActualVersusExpected
+```
+```{r}
+results$PlotCumulativeEffect
+
+## NULL
+
+```
+
+```{r}
+results$PlotPointEffect
+
+## NULL
+
+```
+
+```{r}
+pred <- results$Predictions
+knitr::kable(head(pred))
+```
+```{r}
+results$PlotActuals
+```
+```{r}
+results$PlotPriorLevelSdAnalysis
+```
+```{r}
+coeff <- results$Coefficients
+knitr::kable(head(coeff))
+```
+```{r}
+library(MarketMatching)
+library(dtw)
+data(weather, package="MarketMatching")
+
+cph <- subset(weather, Area=="CPH")$Mean_TemperatureF[1:10]
+sfo <- subset(weather, Area=="SFO")$Mean_TemperatureF[1:10]
+cph
+
+##  [1] 38 40 42 43 40 40 45 44 44 42
+```
+```{r}
+sfo
+```
+```{r}
+align <- dtw(cph, sfo, window.type=sakoeChibaWindow, window.size=1, keep=TRUE)
+```
+```{r}
+dtwWindow.plot(sakoeChibaWindow, window.size=1, reference=10, query=10)
+```
+```{r}
+plot(align,type="two", off=1)
+```
+```{r}
+lcm <- align$localCostMatrix
+image(x=1:nrow(lcm),y=1:ncol(lcm),lcm,xlab="CPH Index",ylab="SFO Index")
+text(row(lcm),col(lcm),label=lcm)
+lines(align$index1,align$index2)
+```
+```{r}
+lcm <- align$costMatrix
+image(x=1:nrow(lcm),y=1:ncol(lcm),lcm,xlab="CPH Index",ylab="SFO Index")
+text(row(lcm),col(lcm),label=lcm)
+lines(align$index1,align$index2)
+```
+```{r}
+zrh <- subset(weather, Area=="ZRH")$Mean_TemperatureF[1:10]
+match <- dtw(cph, zrh, window.type=sakoeChibaWindow, window.size=1, keep=TRUE)
+lcm <- match$costMatrix
+match$distance
+```
+```{r}
+image(x=1:nrow(lcm),y=1:ncol(lcm),lcm,xlab="CPH Index",ylab="ZRH Index")
+text(row(lcm),col(lcm),label=lcm)
+lines(match$index1,match$index2)
+```
+```{r}
+plot(align$stepPattern)
+```
+
